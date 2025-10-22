@@ -1,0 +1,20 @@
+{
+  "name": "Device Management Dashboard",
+  "short_name": "Device Dashboard",
+  "description": "Real-time device management and control dashboard with gRPC streaming",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "en",
+  "dir": "ltr"
+}

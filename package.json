@@ -1,0 +1,25 @@
+{
+  "name": "device-dashboard",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "generate-proto": "protoc -I=. proto/device.proto --ts_out=./src/grpc --plugin=./node_modules/.bin/protoc-gen-ts"
+  },
+  "dependencies": {
+
+    "axios": "^1.4.0",
+   
+    "lucide-vue-next": "^0.200.0",
+    "pinia": "^2.1.0",
+    "vue": "^3.3.0",
+    "vue-router": "^4.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.1.0",
+    "typescript": "^4.3.2",
+    "vite": "^4.3.0"
+  }
+}
