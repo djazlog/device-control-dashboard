@@ -52,11 +52,15 @@
   };
   
   const openTerminal = (device) => {
+    console.log('openTerminal called with device:', device);
+    console.log('Device ID:', device?.deviceId);
     const connection = deviceStore.createTerminalConnection(device.deviceId);
+    console.log('Connection received:', connection);
     activeTerminal.value = {
       device,
       connection
     };
+    console.log('activeTerminal set:', activeTerminal.value);
   };
   
   const closeTerminal = () => {

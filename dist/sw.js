@@ -40,16 +40,16 @@ self.addEventListener('activate', (event) => {
 
 // Перехват запросов
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  // Не перехватываем gRPC запросы
+  if (url.pathname.startsWith('/device.DeviceService') || url.pathname.startsWith('/grpc')) {
+    return; // пропускаем, чтобы шло напрямую в сеть
+  }
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Возвращаем кэшированную версию или загружаем из сети
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
-    )
+    caches.match(event.request).then((response) => {
+      if (response) return response;
+      return fetch(event.request);
+    })
   );
 });
 

@@ -17,9 +17,9 @@
       <div class="terminal-body">
         <div ref="logsContainer" class="terminal-logs">
           <div
-            v-for="log in connection.logs"
+            v-for="log in props.connection?.logs || []"
             :key="log.id"
-            :class="['log-entry', log.type]"
+            :class="['log-entry', log.type, { 'log-error': parseLogMessage(log)?.isError }]"
           >
             <span class="timestamp">
               {{ formatTime(log.timestamp) }}
@@ -28,20 +28,54 @@
               <span v-if="log.type === 'command'" class="command-prefix">$</span>
               <span v-else-if="log.type === 'response'" class="response-prefix">></span>
               <span v-else-if="log.type === 'error'" class="error-prefix">!</span>
+              <span v-else-if="log.type === 'ping' || isPingMessage(log)" class="command-prefix">ping</span>
               
               <template v-if="log.type === 'command'">
-                {{ log.command }} 
-                <span v-if="log.parameters && Object.keys(log.parameters).length">
-                  {{ formatParameters(log.parameters) }}
-                </span>
+                {{ log.message || log.command }}
+              </template>
+              <template v-else-if="log.type === 'ping' || isPingMessage(log)">
+                <!-- PING - просто показываем ping, ничего больше -->
               </template>
               <template v-else>
-                {{ log.message }}
+                <template v-if="parseLogMessage(log)">
+                  <span class="parsed-log">
+                    <span 
+                      class="log-header" 
+                      @click="toggleLogExpansion(log.id)"
+                      :class="{ 'clickable': true }"
+                    >
+                      <span class="expand-icon">
+                        <ChevronRightIcon v-if="!isLogExpanded(log.id)" :size="14" />
+                        <ChevronDownIcon v-else :size="14" />
+                      </span>
+                      <span class="log-status" :class="{ 'status-error': parseLogMessage(log).isError }">
+                        <template v-if="parseLogMessage(log).inner">
+                          {{ parseLogMessage(log).inner.status || 'success' }}
+                          <template v-if="parseLogMessage(log).inner.data?.error">
+                            : {{ parseLogMessage(log).inner.data.error }}
+                          </template>
+                        </template>
+                        <template v-else-if="parseLogMessage(log).outer.status">
+                          {{ parseLogMessage(log).outer.status }}
+                        </template>
+                        <template v-else>
+                          Response
+                        </template>
+                      </span>
+                    </span>
+                    <div v-if="isLogExpanded(log.id)" class="log-details">
+                      <pre class="json-view">{{ formatJsonForDisplay(parseLogMessage(log)) }}</pre>
+                    </div>
+                  </span>
+                </template>
+                <template v-else>
+                  {{ log.message }}
+                </template>
               </template>
             </span>
           </div>
           
-          <div v-if="connection.logs.length === 0" class="empty-logs">
+          <div v-if="!props.connection?.logs || props.connection.logs.length === 0" class="empty-logs">
             No logs yet. Send a command to get started.
           </div>
         </div>
@@ -50,34 +84,24 @@
           <div class="input-group">
             <span class="prompt">$</span>
             <input
+              ref="commandInputRef"
               v-model="commandInput"
-              @keyup.enter="sendCommand"
-              placeholder="Enter command (launch_app, reboot_device, get_device_info, etc.)"
+              @keydown.enter="handleEnterKey"
+              placeholder="Enter command (e.g., ls -a, get_device_info, etc.)"
               class="command-input"
-              :disabled="!device.isOnline"
+              :disabled="!props.connection?.isConnected"
             />
             <button 
-              @click="sendCommand" 
+              @click="sendMessage" 
               class="btn btn-primary"
-              :disabled="!commandInput.trim() || !device.isOnline"
+              :disabled="!commandInput.trim() || !props.connection?.isConnected"
             >
               Send
             </button>
           </div>
   
-          <div class="quick-commands">
-            <span class="quick-commands-label">Quick commands:</span>
-            <div class="quick-buttons">
-              <button
-                v-for="cmd in quickCommands"
-                :key="cmd.command"
-                @click="executeQuickCommand(cmd)"
-                class="btn btn-sm btn-outline"
-                :disabled="!device.isOnline"
-              >
-                {{ cmd.label }}
-              </button>
-            </div>
+          <div v-if="!props.connection?.isConnected" class="connection-status">
+            <span class="status-text">Connecting to WebSocket...</span>
           </div>
         </div>
       </div>
@@ -85,8 +109,8 @@
   </template>
   
   <script setup>
-  import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
-  import { Trash2Icon, XIcon } from 'lucide-vue-next';
+  import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
+  import { Trash2Icon, XIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-vue-next';
   
   const props = defineProps({
     device: {
@@ -103,68 +127,166 @@
   
   const commandInput = ref('');
   const logsContainer = ref(null);
-  
-  const quickCommands = [
-    { command: 'get_device_info', label: 'Device Info', parameters: {} },
-    { command: 'ping', label: 'Ping', parameters: {} },
-    { command: 'get_logs', label: 'Get Logs', parameters: {} },
-    { command: 'launch_app', label: 'Launch Settings', parameters: { package: 'com.android.settings' } },
-  ];
+  const commandInputRef = ref(null);
+  const expandedLogs = ref(new Set());
   
   // Автопрокрутка к новым логам
-  watch(() => props.connection.logs.length, async () => {
+  watch(() => props.connection?.logs, async () => {
     await nextTick();
     if (logsContainer.value) {
       logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
     }
-  });
+  }, { deep: true });
   
   function formatTime(timestamp) {
     const date = new Date(timestamp);
     return date.toLocaleTimeString();
   }
-  
-  function formatParameters(parameters) {
-    return Object.entries(parameters)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(' ');
-  }
-  
-  async function sendCommand() {
-    if (!commandInput.value.trim() || !props.device.isOnline) return;
-  
-    const input = commandInput.value.trim();
-    let command = input;
-    let parameters = {};
-  
-    // Парсинг параметров из строки (например: "launch_app package=com.example url=http://test")
-    const parts = input.split(' ');
-    if (parts.length > 0) {
-      command = parts[0];
-      parameters = {};
+
+  function parseLogMessage(log) {
+    // Если это обычное сообщение, возвращаем как есть
+    if (!log.message || typeof log.message !== 'string') {
+      return null;
+    }
+
+    try {
+      // Пытаемся распарсить как JSON
+      const parsed = JSON.parse(log.message);
       
-      for (let i = 1; i < parts.length; i++) {
-        const part = parts[i];
-        const [key, value] = part.split('=');
-        if (key && value !== undefined) {
-          parameters[key] = value;
+      // Если это PING, не парсим дальше
+      if (parsed.type === 'PING') {
+        return null;
+      }
+      
+      // Проверяем, есть ли поле data, которое само является JSON строкой
+      if (parsed.data && typeof parsed.data === 'string') {
+        try {
+          const innerData = JSON.parse(parsed.data);
+          return {
+            outer: parsed,
+            inner: innerData,
+            isError: innerData.status === 'error',
+            rawMessage: log.message
+          };
+        } catch (e) {
+          // Если внутренний data не JSON, возвращаем только внешний
+          return {
+            outer: parsed,
+            inner: null,
+            isError: false,
+            rawMessage: log.message
+          };
         }
       }
+      
+      // Если нет вложенного data, возвращаем просто распарсенный объект
+      return {
+        outer: parsed,
+        inner: null,
+        isError: parsed.status === 'error',
+        rawMessage: log.message
+      };
+    } catch (e) {
+      // Не JSON, возвращаем null
+      return null;
+    }
+  }
+
+  function toggleLogExpansion(logId) {
+    if (expandedLogs.value.has(logId)) {
+      expandedLogs.value.delete(logId);
+    } else {
+      expandedLogs.value.add(logId);
+    }
+  }
+
+  function isLogExpanded(logId) {
+    return expandedLogs.value.has(logId);
+  }
+
+  function formatJsonForDisplay(parsedLog) {
+    if (!parsedLog) return '';
+    try {
+      // Форматируем полный объект с учетом вложенности
+      const displayObj = { ...parsedLog.outer };
+      if (parsedLog.inner) {
+        displayObj.data = parsedLog.inner;
+      }
+      return JSON.stringify(displayObj, null, 2);
+    } catch (e) {
+      return parsedLog.rawMessage;
+    }
+  }
+
+  function isPingMessage(log) {
+    if (!log.message || typeof log.message !== 'string') {
+      return false;
+    }
+    try {
+      const parsed = JSON.parse(log.message);
+      return parsed.type === 'PING';
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  function handleEnterKey(event) {
+    event.preventDefault();
+    sendMessage();
+  }
+
+  function sendMessage() {
+    const input = commandInput.value.trim();
+    if (!input) return;
+    
+    if (!props.connection) {
+      console.error('Connection object is not available');
+      return;
+    }
+    
+    if (typeof props.connection.sendMessage !== 'function') {
+      console.error('sendMessage method is not available on connection object', props.connection);
+      return;
+    }
+    
+    // Проверяем соединение, но не блокируем отправку - метод sendMessage сам проверит
+    if (!props.connection.isConnected) {
+      console.warn('WebSocket is not connected yet, but attempting to send anyway');
     }
   
     try {
-      await props.connection.sendCommand(command, parameters);
-      commandInput.value = '';
+      // Парсим команду и параметры из введенной строки
+      // Формат: "command param1=value1 param2=value2" или просто "command"
+      const parts = input.split(/\s+/);
+      const command = parts[0];
+      const parameters = {};
+      
+      // Парсим параметры в формате key=value
+      for (let i = 1; i < parts.length; i++) {
+        const part = parts[i];
+        const equalIndex = part.indexOf('=');
+        if (equalIndex > 0) {
+          const key = part.substring(0, equalIndex);
+          const value = part.substring(equalIndex + 1);
+          parameters[key] = value;
+        }
+      }
+      
+      // Формируем сообщение в требуемом формате
+      const message = {
+        type: 'command',
+        command: command,
+        ...(Object.keys(parameters).length > 0 && { parameters: parameters })
+      };
+      
+      const result = props.connection.sendMessage(message);
+      // Очищаем поле ввода только если сообщение было успешно отправлено
+      if (result !== false) {
+        commandInput.value = '';
+      }
     } catch (error) {
-      console.error('Failed to send command:', error);
+      console.error('Failed to send message:', error);
     }
-  }
-  
-  function executeQuickCommand(cmd) {
-    commandInput.value = `${cmd.command} ${Object.entries(cmd.parameters)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(' ')}`.trim();
-    sendCommand();
   }
   
   function clearLogs() {
@@ -173,8 +295,16 @@
   
   // Автофокус на инпут при монтировании
   onMounted(() => {
-    const input = document.querySelector('.command-input');
-    if (input) input.focus();
+    nextTick(() => {
+      if (commandInputRef.value) {
+        commandInputRef.value.focus();
+      }
+      // Проверяем, что connection имеет все необходимые методы
+      if (props.connection) {
+        console.log('Connection object:', props.connection);
+        console.log('sendMessage method:', typeof props.connection.sendMessage);
+      }
+    });
   });
   
   // Закрытие соединения при размонтировании
@@ -273,12 +403,68 @@
     color: #d1d5db;
   }
   
-  .log-entry.error {
+  .log-entry.error,
+  .log-entry.log-error {
     color: #ef4444;
   }
   
   .log-entry.info {
     color: #6b7280;
+  }
+
+  .parsed-log {
+    display: inline-flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .log-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    vertical-align: middle;
+  }
+
+  .log-header.clickable:hover {
+    opacity: 0.8;
+  }
+
+  .expand-icon {
+    display: flex;
+    align-items: center;
+    color: #6b7280;
+    transition: transform 0.2s;
+  }
+
+  .log-status {
+    color: #10b981;
+    font-weight: 500;
+  }
+
+  .log-status.status-error {
+    color: #ef4444;
+  }
+
+  .log-details {
+    margin-top: 8px;
+    margin-left: 22px;
+    padding: 8px;
+    background: #0f0f0f;
+    border-radius: 4px;
+    border: 1px solid #333;
+  }
+
+  .json-view {
+    margin: 0;
+    color: #d1d5db;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
   }
   
   .empty-logs {
@@ -397,5 +583,17 @@
   .btn-outline:hover:not(:disabled) {
     background-color: #6b7280;
     color: #fff;
+  }
+
+  .connection-status {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    background-color: #1a1a1a;
+  }
+
+  .status-text {
+    color: #9ca3af;
+    font-size: 12px;
   }
   </style>
