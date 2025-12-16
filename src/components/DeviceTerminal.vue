@@ -17,7 +17,7 @@
       <div class="terminal-body">
         <div ref="logsContainer" class="terminal-logs">
           <div
-            v-for="log in props.connection?.logs || []"
+            v-for="log in filteredLogs"
             :key="log.id"
             :class="['log-entry', log.type, { 'log-error': parseLogMessage(log)?.isError }]"
           >
@@ -39,30 +39,44 @@
               <template v-else>
                 <template v-if="parseLogMessage(log)">
                   <span class="parsed-log">
-                    <span 
-                      class="log-header" 
-                      @click="toggleLogExpansion(log.id)"
-                      :class="{ 'clickable': true }"
-                    >
-                      <span class="expand-icon">
-                        <ChevronRightIcon v-if="!isLogExpanded(log.id)" :size="14" />
-                        <ChevronDownIcon v-else :size="14" />
+                    <!-- Если есть output для успешного ответа, показываем его сразу -->
+                    <template v-if="parseLogMessage(log).output">
+                      <div class="output-content" v-html="formatOutput(parseLogMessage(log).output)"></div>
+                      <span 
+                        class="log-header" 
+                        @click="toggleLogExpansion(log.id)"
+                        :class="{ 'clickable': true }"
+                      >
+                        <span class="expand-icon">
+                          <ChevronRightIcon v-if="!isLogExpanded(log.id)" :size="14" />
+                          <ChevronDownIcon v-else :size="14" />
+                        </span>
+                        <span class="log-status" v-if="false">Show full JSON</span>
                       </span>
-                      <span class="log-status" :class="{ 'status-error': parseLogMessage(log).isError }">
-                        <template v-if="parseLogMessage(log).inner">
-                          {{ parseLogMessage(log).inner.status || 'success' }}
-                          <template v-if="parseLogMessage(log).inner.data?.error">
-                            : {{ parseLogMessage(log).inner.data.error }}
+                    </template>
+                    <template v-else>
+                      <span 
+                        class="log-header" 
+                        @click="toggleLogExpansion(log.id)"
+                        :class="{ 'clickable': true }"
+                      >
+                        <span class="expand-icon">
+                          <ChevronRightIcon v-if="!isLogExpanded(log.id)" :size="14" />
+                          <ChevronDownIcon v-else :size="14" />
+                        </span>
+                        <span class="log-status" :class="{ 'status-error': parseLogMessage(log).isError }">
+                          <template v-if="parseLogMessage(log).inner">
+                            {{ parseLogMessage(log).inner.status || 'success' }}
+                            <template v-if="parseLogMessage(log).inner.data?.error">
+                              : {{ parseLogMessage(log).inner.data.error }}
+                            </template>
                           </template>
-                        </template>
-                        <template v-else-if="parseLogMessage(log).outer.status">
-                          {{ parseLogMessage(log).outer.status }}
-                        </template>
-                        <template v-else>
-                          Response
-                        </template>
+                          <template v-else-if="parseLogMessage(log).outer.status">
+                            {{ parseLogMessage(log).outer.status }}
+                          </template>
+                        </span>
                       </span>
-                    </span>
+                    </template>
                     <div v-if="isLogExpanded(log.id)" class="log-details">
                       <pre class="json-view">{{ formatJsonForDisplay(parseLogMessage(log)) }}</pre>
                     </div>
@@ -87,7 +101,7 @@
               ref="commandInputRef"
               v-model="commandInput"
               @keydown.enter="handleEnterKey"
-              placeholder="Enter command (e.g., ls -a, get_device_info, etc.)"
+              placeholder="Enter command (e.g., ls -a, get_device_info, service list, etc.)"
               class="command-input"
               :disabled="!props.connection?.isConnected"
             />
@@ -129,6 +143,30 @@
   const logsContainer = ref(null);
   const commandInputRef = ref(null);
   const expandedLogs = ref(new Set());
+
+  // Фильтруем логи, исключая ping сообщения и сообщения об успешной отправке
+  const filteredLogs = computed(() => {
+    return (props.connection?.logs || []).filter(log => {
+      // Исключаем ping сообщения
+      if (log.type === 'ping' || isPingMessage(log)) {
+        return false;
+      }
+      
+      // Исключаем сообщения об успешной отправке команды
+      if (log.message) {
+        try {
+          const parsed = JSON.parse(log.message);
+          if (parsed.type === 'success' && parsed.message === 'command sent successfully') {
+            return false;
+          }
+        } catch (e) {
+          // Не JSON, пропускаем
+        }
+      }
+      
+      return true;
+    });
+  });
   
   // Автопрокрутка к новым логам
   watch(() => props.connection?.logs, async () => {
@@ -162,10 +200,27 @@
       if (parsed.data && typeof parsed.data === 'string') {
         try {
           const innerData = JSON.parse(parsed.data);
+          // Извлекаем output из успешных ответов: data.data.data.output
+          // Приоритет у error: если есть error, показываем его, иначе показываем output
+          let output = null;
+          if (innerData.status === 'success') {
+            const dataOutput = innerData.data?.data?.output;
+            const dataError = innerData.data?.data?.error;
+            
+            if (dataError && dataError.trim() !== '') {
+              // Если есть error, показываем его
+              output = dataError;
+            } else if (dataOutput && dataOutput.trim() !== '') {
+              // Если error нет, но есть output, показываем output
+              output = dataOutput;
+            }
+          }
+          
           return {
             outer: parsed,
             inner: innerData,
             isError: innerData.status === 'error',
+            output: output,
             rawMessage: log.message
           };
         } catch (e) {
@@ -174,16 +229,59 @@
             outer: parsed,
             inner: null,
             isError: false,
+            output: null,
             rawMessage: log.message
           };
         }
       }
       
+      // Также проверяем, если data уже объект (не строка)
+      if (parsed.data && typeof parsed.data === 'object') {
+        // Извлекаем output из успешных ответов: data.data.data.output
+        // Приоритет у error: если есть error, показываем его, иначе показываем output
+        let output = null;
+        if (parsed.data.status === 'success') {
+          const dataOutput = parsed.data.data?.data?.output;
+          const dataError = parsed.data.data?.data?.error;
+          
+          if (dataError && dataError.trim() !== '') {
+            // Если есть error, показываем его
+            output = dataError;
+          } else if (dataOutput && dataOutput.trim() !== '') {
+            // Если error нет, но есть output, показываем output
+            output = dataOutput;
+          }
+        }
+        
+        return {
+          outer: parsed,
+          inner: parsed.data,
+          isError: parsed.data.status === 'error',
+          output: output,
+          rawMessage: log.message
+        };
+      }
+      
       // Если нет вложенного data, возвращаем просто распарсенный объект
+      let output = null;
+      if (parsed.status === 'success') {
+        const dataOutput = parsed.data?.data?.output;
+        const dataError = parsed.data?.data?.error;
+        
+        if (dataError && dataError.trim() !== '') {
+          // Если есть error, показываем его
+          output = dataError;
+        } else if (dataOutput && dataOutput.trim() !== '') {
+          // Если error нет, но есть output, показываем output
+          output = dataOutput;
+        }
+      }
+      
       return {
         outer: parsed,
         inner: null,
         isError: parsed.status === 'error',
+        output: output,
         rawMessage: log.message
       };
     } catch (e) {
@@ -216,6 +314,18 @@
     } catch (e) {
       return parsedLog.rawMessage;
     }
+  }
+
+  function formatOutput(output) {
+    if (!output) return '';
+    // Заменяем \n на <br> и экранируем HTML для безопасности
+    return output
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')
+      .replace(/\r\n/g, '<br>')
+      .replace(/\r/g, '<br>');
   }
 
   function isPingMessage(log) {
@@ -256,20 +366,31 @@
   
     try {
       // Парсим команду и параметры из введенной строки
-      // Формат: "command param1=value1 param2=value2" или просто "command"
+      // Формат: "command param1=value1 param2=value2" или "command arg1 arg2" или просто "command"
       const parts = input.split(/\s+/);
-      const command = parts[0];
       const parameters = {};
+      let hasKeyValueParams = false;
       
-      // Парсим параметры в формате key=value
+      // Проверяем, есть ли параметры в формате key=value
       for (let i = 1; i < parts.length; i++) {
         const part = parts[i];
         const equalIndex = part.indexOf('=');
         if (equalIndex > 0) {
+          hasKeyValueParams = true;
           const key = part.substring(0, equalIndex);
           const value = part.substring(equalIndex + 1);
           parameters[key] = value;
         }
+      }
+      
+      // Если есть параметры в формате key=value, используем старую логику
+      // Иначе отправляем всю команду целиком
+      let command;
+      if (hasKeyValueParams) {
+        command = parts[0];
+      } else {
+        // Отправляем всю строку как команду (включая все аргументы)
+        command = input;
       }
       
       // Формируем сообщение в требуемом формате
@@ -460,6 +581,21 @@
   .json-view {
     margin: 0;
     color: #d1d5db;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }
+
+  .output-content {
+    margin-bottom: 8px;
+    padding: 8px;
+    background: #0f0f0f;
+    border-radius: 4px;
+    border: 1px solid #333;
+    color: #d1d5db;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 12px;
     line-height: 1.5;
     white-space: pre-wrap;

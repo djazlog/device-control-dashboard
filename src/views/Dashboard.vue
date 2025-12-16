@@ -2,7 +2,13 @@
     <div class="dashboard">
       <header class="dashboard-header">
         <h1>Device Management Dashboard</h1>
-        <ConnectionStatus />
+        <div class="header-actions">
+          <ConnectionStatus />
+          <button @click="handleLogout" class="logout-button" title="Выйти">
+            <LogOutIcon :size="18" />
+            Выйти
+          </button>
+        </div>
       </header>
   
       <main class="dashboard-main">
@@ -37,15 +43,31 @@
   
   <script setup>
   import { ref, onMounted, onUnmounted } from 'vue';
+  import { useRouter } from 'vue-router';
   import { useDeviceStore } from '@/stores/deviceStore';
+  import { useAuthStore } from '@/stores/authStore';
   import DeviceList from '@/components/DeviceList.vue';
   import DeviceTerminal from '@/components/DeviceTerminal.vue';
   import ConnectionStatus from '@/components/ConnectionStatus.vue';
   import DeviceDetails from '@/components/DeviceDetails.vue';
+  import { LogOutIcon } from 'lucide-vue-next';
   
+  const router = useRouter();
   const deviceStore = useDeviceStore();
+  const authStore = useAuthStore();
   const showOnlineOnly = ref(false);
   const activeTerminal = ref(null);
+  
+  const handleLogout = async () => {
+    try {
+      await authStore.logout();
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Все равно перенаправляем на страницу логина, даже если произошла ошибка
+      router.push('/login');
+    }
+  };
   
   const refreshDevices = () => {
     deviceStore.fetchDevices(showOnlineOnly.value);
@@ -93,6 +115,36 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+  
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .logout-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .logout-button:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+  }
+  
+  .logout-button:active {
+    transform: translateY(0);
   }
   
   .dashboard-header h1 {

@@ -205,27 +205,61 @@
       });
 
       // Error handling for failed resource loading
+      // Только для критических ошибок загрузки скриптов/модулей
+      let hasCriticalError = false;
+      let appLoaded = false;
+      
       window.addEventListener('error', (e) => {
-        console.error('Error loading resource:', e);
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-          loadingScreen.innerHTML = `
-            <div style="text-align: center; color: var(--error-color);">
-              <h2>Failed to load application</h2>
-              <p>Please check your connection and try refreshing the page.</p>
-              <button onclick="window.location.reload()" style="
-                margin-top: 16px;
-                padding: 8px 16px;
-                background: var(--primary-color);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-              ">Retry</button>
-            </div>
-          `;
+        // Игнорируем ошибки изображений, стилей и других некритических ресурсов
+        const isCriticalResource = 
+          e.target && (
+            e.target.tagName === 'SCRIPT' || 
+            e.target.tagName === 'LINK' && e.target.rel === 'modulepreload'
+          );
+        
+        // Или ошибка в самом скрипте (не загрузка ресурса)
+        const isScriptError = !e.target && e.filename && e.filename.includes('/src/');
+        
+        if ((isCriticalResource || isScriptError) && !appLoaded && !hasCriticalError) {
+          console.error('Critical error loading application:', e);
+          hasCriticalError = true;
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) {
+            loadingScreen.innerHTML = `
+              <div style="text-align: center; color: var(--error-color);">
+                <h2>Failed to load application</h2>
+                <p>Please check your connection and try refreshing the page.</p>
+                <button onclick="window.location.reload()" style="
+                  margin-top: 16px;
+                  padding: 8px 16px;
+                  background: var(--primary-color);
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  cursor: pointer;
+                ">Retry</button>
+              </div>
+            `;
+          }
+        } else {
+          // Логируем некритические ошибки, но не показываем их пользователю
+          console.warn('Non-critical error:', e);
         }
       }, true);
+      
+      // Отслеживаем успешную загрузку приложения
+      window.addEventListener('load', () => {
+        appLoaded = true;
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen && !hasCriticalError) {
+          loadingScreen.style.opacity = '0';
+          setTimeout(() => {
+            if (loadingScreen.parentNode) {
+              loadingScreen.remove();
+            }
+          }, 300);
+        }
+      });
     </script>
 
     <!-- Fallback for non-JS browsers -->

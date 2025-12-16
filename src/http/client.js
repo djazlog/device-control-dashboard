@@ -8,6 +8,37 @@ class HttpClient {
         'Content-Type': 'application/json'
       }
     });
+
+    // Добавляем interceptor для автоматической подстановки токена
+    this.api.interceptors.request.use(
+      (config) => {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
+
+    // Обрабатываем ошибки авторизации
+    this.api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          // Токен невалиден или истек - очищаем авторизацию
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          // Перенаправляем на страницу логина, если не на ней уже
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   mapDevice(payload) {
@@ -73,6 +104,36 @@ class HttpClient {
       return true;
     } catch (e) {
       throw e;
+    }
+  }
+
+  async login(username, password) {
+    const { data } = await this.api.post('/auth/login', {
+      username,
+      password
+    });
+    return data;
+  }
+
+  async validateToken(token) {
+    try {
+      const { data } = await this.api.get('/auth/validate', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async logout() {
+    try {
+      await this.api.post('/auth/logout');
+    } catch (error) {
+      // Игнорируем ошибки при выходе
+      console.warn('Logout error:', error);
     }
   }
 

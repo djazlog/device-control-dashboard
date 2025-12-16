@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import httpClient from '@/http/client';
+import { useAuthStore } from '@/stores/authStore';
 
 export const useDeviceStore = defineStore('devices', () => {
   const devices = ref([]);
@@ -114,12 +115,21 @@ export const useDeviceStore = defineStore('devices', () => {
     const baseUrl = import.meta.env.VITE_HTTP_API_URL || 'http://localhost:8081';
     console.log('Base URL:', baseUrl);
     
+    // Получаем токен авторизации
+    const authStore = useAuthStore();
+    const token = authStore.token;
+    
+    if (!token) {
+      console.error('No authentication token available for WebSocket connection');
+      throw new Error('Требуется авторизация для подключения к WebSocket');
+    }
+    
     // Преобразуем HTTP URL в WebSocket URL
-    // Включаем deviceId в URL, так как сервер требует device_id
+    // Включаем deviceId и токен в URL, так как сервер требует device_id и авторизацию
     const wsUrl = baseUrl
       .replace(/^http:/, 'ws:')
       .replace(/^https:/, 'wss:')
-      .replace(/\/$/, '') + `/ws/admin?device_id=${encodeURIComponent(deviceId)}`;
+      .replace(/\/$/, '') + `/ws/admin?device_id=${encodeURIComponent(deviceId)}&token=${encodeURIComponent(token)}`;
     console.log('WebSocket URL:', wsUrl);
     
     const connection = {
