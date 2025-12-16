@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f3460;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#bgGrad)" stroke="#16213e" stroke-width="4"/>
+  
+  <!-- Terminal window frame -->
+  <rect x="20" y="30" width="88" height="68" rx="6" fill="#0a1929" stroke="#00d9ff" stroke-width="2.5" opacity="0.95"/>
+  
+  <!-- Window controls (dots) -->
+  <circle cx="30" cy="40" r="3" fill="#ff5f56"/>
+  <circle cx="42" cy="40" r="3" fill="#ffbd2e"/>
+  <circle cx="54" cy="40" r="3" fill="#27c93f"/>
+  
+  <!-- Prompt symbol $ -->
+  <text x="30" y="68" font-family="monospace" font-size="24" font-weight="bold" fill="#00d9ff" filter="url(#glow)">$</text>
+  
+  <!-- Command text -->
+  <rect x="48" y="57" width="40" height="4" rx="2" fill="#00d9ff" opacity="0.7"/>
+  <rect x="48" y="68" width="28" height="4" rx="2" fill="#00d9ff" opacity="0.5"/>
+  
+  <!-- Cursor with animation -->
+  <rect x="92" y="56" width="4" height="14" rx="1" fill="#00ff00" filter="url(#glow)">
+    <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Code brackets accent -->
+  <text x="26" y="88" font-family="monospace" font-size="16" fill="#00d9ff" opacity="0.4">&gt;_</text>
+</svg>
