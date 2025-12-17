@@ -9,12 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "16x16 32x32",
-      "type": "image/x-icon"
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ],
   "categories": ["productivity", "utilities"],
   "lang": "en",
   "dir": "ltr"
 }
+

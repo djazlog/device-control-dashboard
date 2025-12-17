@@ -1,84 +1,43 @@
 // Service Worker для Device Management Dashboard
-const CACHE_NAME = 'device-dashboard-v1';
-const urlsToCache = [
-  '/',
-  '/src/main.js',
-  '/src/App.vue',
-  '/src/views/Dashboard.vue',
-  '/src/components/DeviceList.vue',
-  '/src/components/DeviceTerminal.vue',
-  '/src/components/ConnectionStatus.vue',
-  '/src/components/DeviceDetails.vue'
-];
+// Минимальный Service Worker без кэширования
+// Используется только для регистрации PWA - все запросы идут напрямую в сеть
 
 // Установка Service Worker
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+  // Принудительно активируем новый Service Worker сразу
+  self.skipWaiting();
 });
 
 // Активация Service Worker
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
+  // Берем контроль над всеми клиентами сразу
+  event.waitUntil(self.clients.claim());
 });
 
-// Перехват запросов
+// Обработка запросов
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  // Не перехватываем gRPC запросы
-  if (url.pathname.startsWith('/device.DeviceService') || url.pathname.startsWith('/grpc')) {
-    return; // пропускаем, чтобы шло напрямую в сеть
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Игнорируем запросы к Vite dev server (localhost:5173 или /@vite)
+  if (url.hostname === 'localhost' && url.port === '5173') {
+    return; // Пропускаем запрос к dev серверу
   }
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) return response;
-      return fetch(event.request);
-    })
-  );
+  if (url.pathname.startsWith('/@vite')) {
+    return; // Пропускаем запросы к Vite HMR
+  }
+
+  // Пропускаем все API запросы и WebSocket - они должны идти напрямую в сеть
+  if (url.pathname.startsWith('/ws') || 
+      url.pathname.startsWith('/api') ||
+      url.pathname.startsWith('/auth') ||
+      url.pathname.startsWith('/devices') ||
+      url.pathname.startsWith('/grpc')) {
+    return; // Не перехватываем API запросы
+  }
+
+  // Для всех остальных запросов просто используем сеть без кэширования
+  // Это гарантирует, что всегда загружаются свежие версии файлов
+  event.respondWith(fetch(request));
 });
 
-// Обработка push уведомлений (для будущих функций)
-self.addEventListener('push', (event) => {
-  if (event.data) {
-    const data = event.data.json();
-    const options = {
-      body: data.body,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: 1
-      }
-    };
-    
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
-  }
-});
-
-// Обработка кликов по уведомлениям
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  
-  event.waitUntil(
-    clients.openWindow('/')
-  );
-});

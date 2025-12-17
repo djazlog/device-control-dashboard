@@ -1,15 +1,19 @@
 services:
   device-control-dashboard:
-    image: nginx:alpine
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        # Передаем переменные окружения для сборки
+        # Можно переопределить через .env файл или переменные окружения хоста
+        VITE_HTTP_API_URL: ${VITE_HTTP_API_URL:-http://localhost:8081}
+        VITE_WS_API_URL: ${VITE_WS_API_URL:-}
     restart: unless-stopped
     ports:
       - "8117:80"
     networks:
       - app-network
 
-    volumes:
-      - ./static:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 networks:
   app-network:
-    mode: bridge
+    driver: bridge
