@@ -20,6 +20,7 @@
             :error="deviceStore.error"
             :online-only="showOnlineOnly"
             @select="deviceStore.selectDevice"
+            @shell="handleShellCommand"
             @terminal="openTerminal"
             @refresh="refreshDevices"
             @toggle-online="showOnlineOnly = $event"
@@ -89,6 +90,17 @@
     if (activeTerminal.value) {
       deviceStore.closeTerminalConnection(activeTerminal.value.device.deviceId);
       activeTerminal.value = null;
+    }
+  };
+
+  const handleShellCommand = async (device) => {
+    try {
+      // Send shell command to launch MShell app
+      const command = 'su -c "am start -n ru.mstrike.mshell/.MainActivity"';
+      await deviceStore.sendCommand(device.deviceId, command);
+      console.log('Shell command sent to device:', device.deviceId);
+    } catch (error) {
+      console.error('Failed to send shell command:', error);
     }
   };
   

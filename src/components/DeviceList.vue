@@ -49,6 +49,15 @@
             </div>
             <div class="device-actions">
               <button 
+                @click.stop="$emit('shell', device)"
+                class="btn btn-sm btn-success"
+                :disabled="!device.isOnline"
+                title="Launch MShell"
+              >
+                <CommandIcon :size="14" />
+                Shell
+              </button>
+              <button 
                 @click.stop="$emit('terminal', device)"
                 class="btn btn-sm btn-primary"
                 :disabled="!device.isOnline"
@@ -86,7 +95,7 @@
   
   <script setup>
   import { computed } from 'vue';
-  import { RefreshCwIcon, TerminalIcon } from 'lucide-vue-next';
+  import { RefreshCwIcon, TerminalIcon, CommandIcon } from 'lucide-vue-next';
   
   const props = defineProps({
     devices: {
@@ -111,7 +120,7 @@
     }
   });
   
-  const emit = defineEmits(['select', 'terminal', 'refresh', 'toggle-online']);
+  const emit = defineEmits(['select', 'shell', 'terminal', 'refresh', 'toggle-online']);
   
   const filteredDevices = computed(() => {
     if (props.onlineOnly) {
@@ -315,6 +324,15 @@
   
   .btn-primary:hover:not(:disabled) {
     background-color: #2563eb;
+  }
+
+  .btn-success {
+    background-color: #10b981;
+    color: white;
+  }
+
+  .btn-success:hover:not(:disabled) {
+    background-color: #059669;
   }
   
   .btn-secondary {
