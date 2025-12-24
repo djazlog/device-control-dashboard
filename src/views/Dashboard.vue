@@ -19,11 +19,13 @@
             :loading="deviceStore.loading"
             :error="deviceStore.error"
             :online-only="showOnlineOnly"
+            :search-query="searchQuery"
             @select="deviceStore.selectDevice"
             @shell="handleShellCommand"
             @terminal="openTerminal"
             @refresh="refreshDevices"
             @toggle-online="showOnlineOnly = $event"
+            @update-search="searchQuery = $event"
           />
   
           <div v-if="activeTerminal" class="terminal-container">
@@ -45,6 +47,9 @@
         <div class="modal-content">
           <div class="spinner"></div>
           <p>Запускаем shell-клиент</p>
+          <div class="progress-container">
+            <div class="progress-bar" :style="{ width: shellProgress + '%' }"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -64,9 +69,13 @@
   const router = useRouter();
   const deviceStore = useDeviceStore();
   const authStore = useAuthStore();
-  const showOnlineOnly = ref(false);
+  const showOnlineOnly = ref(true);
   const activeTerminal = ref(null);
   const showShellModal = ref(false);
+  const shellProgress = ref(0);
+  const searchQuery = ref('');
+  
+  const SHELL_LAUNCH_DELAY = 10000; // 10 seconds
   
   const handleLogout = async () => {
     try {
@@ -111,12 +120,25 @@
       
       // Show modal while waiting
       showShellModal.value = true;
+      shellProgress.value = 0;
       
-      // Wait 10 seconds before opening terminal
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // Animate progress bar
+      const startTime = Date.now();
+      const progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        shellProgress.value = Math.min((elapsed / SHELL_LAUNCH_DELAY) * 100, 100);
+        
+        if (elapsed >= SHELL_LAUNCH_DELAY) {
+          clearInterval(progressInterval);
+        }
+      }, 50);
+      
+      // Wait for delay before opening terminal
+      await new Promise(resolve => setTimeout(resolve, SHELL_LAUNCH_DELAY));
       
       // Hide modal
       showShellModal.value = false;
+      shellProgress.value = 0;
       
       // Open terminal page in new tab with device MAC address in uppercase
       const macAddress = device.deviceId.toUpperCase();
@@ -126,16 +148,19 @@
     } catch (error) {
       console.error('Failed to send shell command:', error);
       showShellModal.value = false;
+      shellProgress.value = 0;
     }
   };
   
   onMounted(() => {
-    // Загружаем данные только по кнопке Refresh.
-    onUnmounted(() => {
-      if (activeTerminal.value) {
-        closeTerminal();
-      }
-    });
+    // Загружаем устройства при старте
+    refreshDevices();
+  });
+  
+  onUnmounted(() => {
+    if (activeTerminal.value) {
+      closeTerminal();
+    }
   });
   </script>
   
@@ -263,6 +288,21 @@
     font-size: 18px;
     font-weight: 500;
     color: #1f2937;
+  }
+
+  .progress-container {
+    width: 300px;
+    height: 8px;
+    background-color: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    border-radius: 4px;
+    transition: width 0.05s linear;
   }
 
   @keyframes spin {

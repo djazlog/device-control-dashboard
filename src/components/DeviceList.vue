@@ -3,6 +3,13 @@
       <div class="device-list-header">
         <h2>Connected Devices</h2>
         <div class="controls">
+          <input 
+            type="text" 
+            :value="searchQuery"
+            @input="$emit('update-search', $event.target.value)"
+            placeholder="Поиск по MAC-адресу..."
+            class="search-input"
+          />
           <button 
             @click="$emit('refresh')" 
             :disabled="loading"
@@ -117,16 +124,32 @@
     onlineOnly: {
       type: Boolean,
       default: false
+    },
+    searchQuery: {
+      type: String,
+      default: ''
     }
   });
   
-  const emit = defineEmits(['select', 'shell', 'terminal', 'refresh', 'toggle-online']);
+  const emit = defineEmits(['select', 'shell', 'terminal', 'refresh', 'toggle-online', 'update-search']);
   
   const filteredDevices = computed(() => {
+    let filtered = props.devices;
+    
+    // Filter by online status
     if (props.onlineOnly) {
-      return props.devices.filter(device => device.isOnline);
+      filtered = filtered.filter(device => device.isOnline);
     }
-    return props.devices;
+    
+    // Filter by search query (MAC address)
+    if (props.searchQuery && props.searchQuery.trim()) {
+      const query = props.searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(device => 
+        device.deviceId.toLowerCase().includes(query)
+      );
+    }
+    
+    return filtered;
   });
   
   function isSelected(device) {
@@ -165,10 +188,27 @@
   
   .controls {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     align-items: center;
   }
-  
+
+  .search-input {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    min-width: 250px;
+    transition: border-color 0.2s;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+
+  .search-input::placeholder {
+    color: #9ca3af;
+  }  
   .checkbox-label {
     display: flex;
     align-items: center;
