@@ -1,0 +1,2 @@
+su -c "am start ru.mstrike.msadminer/.MainActivity"
+su -c "am stopservice ru.mstrike.msadminer/.ForegroundService"
